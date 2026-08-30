@@ -46,14 +46,15 @@ func (verb) Reserved() string { return "file" }
 
 // fileCheck carries the decoded plugin_input.
 type fileCheck struct {
-	Path     string
-	Exists   *bool
-	Mode     string
-	Owner    string
-	GroupOf  string
-	Filetype string
-	Contains spec.MatcherList
-	Sha256   string
+	Path       string
+	Exists     *bool
+	Mode       string
+	Owner      string
+	GroupOf    string
+	Filetype   string
+	Contains   spec.MatcherList
+	LinkTarget spec.MatcherList
+	Sha256     string
 }
 
 // RunVerb (do:assert) runs the stat probe via the live CheckContext and asserts the
@@ -62,14 +63,15 @@ func (verb) RunVerb(ctx context.Context, cc kit.CheckContext, op *spec.Op) kit.R
 	var in params.FileInput
 	kit.DecodeInput(op.PluginInput, &in)
 	f := fileCheck{
-		Path:     in.File,
-		Exists:   in.Exists,
-		Mode:     in.Mode,
-		Owner:    in.Owner,
-		GroupOf:  in.GroupOf,
-		Filetype: in.Filetype,
-		Contains: decodeContainsList(in.Contains),
-		Sha256:   in.Sha256,
+		Path:       in.File,
+		Exists:     in.Exists,
+		Mode:       in.Mode,
+		Owner:      in.Owner,
+		GroupOf:    in.GroupOf,
+		Filetype:   in.Filetype,
+		Contains:   decodeContainsList(in.Contains),
+		LinkTarget: decodeContainsList(in.LinkTarget),
+		Sha256:     in.Sha256,
 	}
 	path := f.Path
 	// Probe: exists=1|<type>|<mode>|<user>|<group>  OR  exists=0||||
@@ -117,6 +119,29 @@ fi`, shellquote.ShellQuote(path))
 	if f.Filetype != "" {
 		if ft := normalizeFiletype(typeStr); ft != f.Filetype {
 			return kit.Failf("filetype=%s, want %s", ft, f.Filetype)
+		}
+	}
+	if len(f.LinkTarget) > 0 {
+		// A non-symlink must FAIL here rather than silently comparing the path to itself:
+		// `readlink -f /etc/hosts` prints /etc/hosts, so an `equals` matcher naming the
+		// path would pass on a regular file and assert nothing at all.
+		if ft := normalizeFiletype(typeStr); ft != "symlink" {
+			return kit.Failf("link_target: %s is a %s, not a symlink", path, ft)
+		}
+		out, _, exit, err := cc.Exec().RunCapture(ctx,
+			fmt.Sprintf("readlink -f %s", shellquote.ShellQuote(path)))
+		if err != nil {
+			return kit.Failf("link_target probe: %v", err)
+		}
+		if exit != 0 {
+			// A dangling link resolves to nothing. That is a real finding, not an empty
+			// string to match against — an empty subject satisfies not_contains matchers.
+			return kit.Failf("link_target: %s does not resolve (readlink exited %d) — "+
+				"a dangling symlink", path, exit)
+		}
+		target := strings.TrimSpace(out)
+		if err := sdk.MatchAll(target, f.LinkTarget); err != nil {
+			return kit.Failf("link_target %q: %v", target, err)
 		}
 	}
 	if len(f.Contains) > 0 {

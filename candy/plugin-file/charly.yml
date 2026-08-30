@@ -1,7 +1,7 @@
 version: 2026.232.0520
 plugin-file:
     candy:
-        version: 2026.176.2700
+        version: 2026.242.2320
         description: |-
             The `file` MULTI-ROLE state-provision verb relocated into a candy. CHECK:
             stat the path via the live check engine and assert

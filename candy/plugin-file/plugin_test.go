@@ -19,12 +19,15 @@ type fakeExec struct {
 
 type fakeResponse struct {
 	matchPrefix, stdout string
+	// exit lets a test simulate a probe that FAILS (a dangling symlink, an unreadable
+	// path). Zero for every existing case, so named-field literals are unaffected.
+	exit int
 }
 
 func (f *fakeExec) RunCapture(_ context.Context, cmd string) (string, string, int, error) {
 	for _, r := range f.responses {
 		if strings.HasPrefix(cmd, r.matchPrefix) || strings.Contains(cmd, r.matchPrefix) {
-			return r.stdout, "", 0, nil
+			return r.stdout, "", r.exit, nil
 		}
 	}
 	return "", "no fake response for: " + cmd, 127, nil

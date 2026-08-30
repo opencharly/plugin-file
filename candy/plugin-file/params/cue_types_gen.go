@@ -55,6 +55,25 @@ type FileInput struct {
 	// filetype — optional expected node type (goss-parity short forms).
 	Filetype string `yaml:"filetype,omitempty" json:"filetype,omitempty"`
 
+	// link_target — optional matchers the symlink's RESOLVED target must satisfy.
+	//
+	// `filetype: symlink` proves a path IS a link but says nothing about where it points,
+	// and for a whole class of assertions where it points is the entire claim: /etc/localtime
+	// names the configured timezone, /usr/bin/<x> names the alternative in use,
+	// /etc/systemd/system/*.wants/* names the enabled unit. Without this the only recourse
+	// is `command: readlink`, which forfeits the exists/mode/owner assertions the same step
+	// could otherwise make about the link itself.
+	//
+	// The target is FULLY RESOLVED (`readlink -f`), so a relative link such as
+	// ../usr/share/zoneinfo/UTC is asserted as /usr/share/zoneinfo/UTC and a chain of links
+	// is followed to its end. That is the question these assertions are actually asking —
+	// "what does this resolve to" — and it is stable across distros that spell the same
+	// answer with different relative paths.
+	//
+	// Setting it on a path that is not a symlink FAILS rather than silently comparing the
+	// path to itself, which `readlink -f` would otherwise do for a regular file.
+	LinkTarget FileContains `yaml:"link_target,omitempty" json:"link_target,omitempty"`
+
 	// contains — optional goss-style matchers the file's contents must satisfy.
 	// Reproduces the contains-default matcher-list shape standalone (scalar / single
 	// operator-map / list); a bare scalar means `contains` at decode (decodeContainsList).
